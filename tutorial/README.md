@@ -1,0 +1,1 @@
+scrapy crawl icetrade -o icetrade.json -t json

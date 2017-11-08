@@ -1,0 +1,22 @@
+// need to step inside each lot
+{
+    "invite_number",
+    "procurement_short_description",
+    "customer_info",
+    "lots":[{
+        "id",
+        "description",
+        "winner",
+        "contract_price",
+        "result_status",
+        "winner_country",
+        "winner_address",
+        "winner_UNP",
+        "good_source_country",
+        "contract_date",
+        "quantity",
+        "other_participants": [{
+
+        }] //separated by `;`
+    }]
+}

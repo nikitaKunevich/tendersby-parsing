@@ -1,0 +1,1 @@
+from icetrade_spider import IcetradeSpider
