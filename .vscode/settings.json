@@ -1,4 +1,4 @@
 {
-    "python.pythonPath": "${workspaceRoot}/env/bin/python",
+    "python.pythonPath": "${workspaceRoot}/../venv/bin/python",
     "python.linting.pylintEnabled": false
 }

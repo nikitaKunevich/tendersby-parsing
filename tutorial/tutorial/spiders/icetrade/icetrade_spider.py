@@ -9,19 +9,31 @@ from datetime import datetime
 
 from config import siteURL, paths
 import consts
-import pyrebase
-from config import firebase_db_config
 
+# import firebase_admin
+# from firebase_admin import credentials
+# from firebase_admin import db
+# from config import firebase_db_config
 
-firebase = pyrebase.initialize_app(firebase_db_config)
-db = firebase.database()
-data = {"name": "Mortimer 'Morty' Smith"}
-# Get a reference to the auth service
-auth = firebase.auth()
-# Log the user in
-user = auth.sign_in_with_email_and_password(email, password)
-db.child("users").push(data)
-a = 0
+# cred = credentials.Certificate('../../firebase_credentials.json')
+# # default_app = firebase_admin.initialize_app(cred)
+# firebase_admin.initialize_app(cred, {
+#     'databaseURL': firebase_db_config['databaseURL']
+# })
+# ref = db.reference('public_resource')
+# print(ref.get())
+# users_ref = ref.child('users')
+# users_ref.set({
+#     'alanisawesome': {
+#         'date_of_birth': 'June 23, 1912',
+#         'full_name': 'Alan Turing'
+#     },
+#     'gracehop': {
+#         'date_of_birth': 'December 9, 1906',
+#         'full_name': 'Grace Hopper'
+#     }
+# })
+
 '''
 only first lot_item is filled last lot info - FIXED
 check if results are parsed
@@ -37,7 +49,36 @@ class IcetradeSpider(scrapy.Spider):
 
     # constants
     name = "icetrade"
-    tender_field_map = {
+    tender_field_map_v1 = {
+        "site_address":".af-operator_site", #Адрес сайта, обеспечивающего доступ на ЭТП
+        #["method_of_negotiation"],
+        #"operator_info" ".af-operator_site", #Данные оператора	
+        "industry":".af-industry", #Отрасль
+        "short_description":".af-title", #Краткое описание предмета закупки	
+
+        #customer info
+        "procurement_held_by" : ".af-hold_by", #Закупка проводится	
+        "customer_name" : ".af-customer_data", #Полное наименование заказчика, место нахождения организации, УНП	
+        "contacts" : ".af.af-customer_contacts", #Фамилии, имена и отчества, номера телефонов работников заказчика	
+
+        #procurement_info
+        "creation_date":".af-created", #Дата размещения приглашения	
+        "start_date":".af-request_start",
+        "end_date":".af.af-request_end", #Дата и время окончания приема предложений	
+        "documentation_provisioning_info":"",
+        "documentation_price":"",
+        "proposal_estimated_price":".af.af-currency", #Общая ориентировочная стоимость акупки	
+        "proposal_closing_time":"",
+        "qualification_terms":".af.af-qualification", # Квалификационные требования
+        "proposal_participators_requirements" :".af.af-participator_demand",#Требования к оставу участников	
+        "proposal_submission_address":"",
+        "proposal_opening_time":"",
+        "proposal_opening_address" :"",
+        "preliminary_qualification_terms":"",
+        "other_information" :".af.af-others" #Иные сведения	
+    }
+
+        tender_field_map = {
         "site_address":".af-operator_site", #Адрес сайта, обеспечивающего доступ на ЭТП
         #["method_of_negotiation"],
         #"operator_info" ".af-operator_site", #Данные оператора	
@@ -103,7 +144,7 @@ class IcetradeSpider(scrapy.Spider):
     }
     
     def start_requests(self):
-        number = None
+        number = 400522
         # with results 400520
         starting = 400520
         limit = 10000#10000
@@ -271,8 +312,8 @@ class IcetradeSpider(scrapy.Spider):
             header = row.css('th::text').extract_first().strip()
             if header not in self.lot_field_map:
                 tender['unused_lot_headers'].append((tender['id'], header))
-                data = {"name": "Mortimer 'Morty' Smith"}
-                db.child("users").push(data)
+                # data = {"name": "Mortimer 'Morty' Smith"}
+                # db.child("users").push(data)
                 #TODO: add headers
                 continue
             # try:
@@ -293,7 +334,8 @@ class IcetradeSpider(scrapy.Spider):
 
         if (parsing_state == LotParseState.Info):
             next_parsing_state = LotParseState.Result
-
+            if 'result_id' not in response.meta:
+                print("no result_id tender_id: %s, lot %s" % (tender['id'], current_index))
             next_response = scrapy.http.FormRequest(
                 url = siteURL + paths['lots_result'],
                 formdata = {'id' : str(current_index), 'auction_id': str(response.meta['result_id']), 'revision_id': '0'},
