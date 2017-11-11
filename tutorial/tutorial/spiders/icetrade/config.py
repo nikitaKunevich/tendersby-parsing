@@ -15,3 +15,6 @@ firebase_db_config = {
     "storageBucket": "modata-cf3ff.appspot.com",
     # messagingSenderId: "1084746579611"
   }
+
+headers_file = 'unused_headers.txt'
+lot_headers_file = 'unused_lot_headers.txt'

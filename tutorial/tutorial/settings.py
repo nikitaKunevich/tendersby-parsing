@@ -21,6 +21,14 @@ NEWSPIDER_MODULE = 'tutorial.spiders'
 # Obey robots.txt rules
 ROBOTSTXT_OBEY = True
 FEED_EXPORT_ENCODING = 'utf-8'
+
+# mongopipeline
+ITEM_PIPELINES = {'tutorial.pipelines.MongoDBPipeline':1000}
+MONGODB_SERVER = "localhost"
+MONGODB_PORT = 27017
+MONGODB_DB = "tendersby"
+MONGODB_COLLECTION = "tenders"
+
 # Configure maximum concurrent requests performed by Scrapy (default: 16)
 #CONCURRENT_REQUESTS = 32
 

@@ -7,8 +7,10 @@ import urllib
 import re
 from datetime import datetime
 
-from config import siteURL, paths
+# from config import siteURL, paths
+import config
 import consts
+import sys, os
 
 # import firebase_admin
 # from firebase_admin import credentials
@@ -39,6 +41,12 @@ only first lot_item is filled last lot info - FIXED
 check if results are parsed
 '''
 
+class SetEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, set):
+            return list(obj)
+        return json.JSONEncoder.default(self, obj)
+
 class LotParseState():
     NoResult = 0
     Info = 1
@@ -46,65 +54,41 @@ class LotParseState():
 
 class IcetradeSpider(scrapy.Spider):
 
-
     # constants
     name = "icetrade"
-    tender_field_map_v1 = {
-        "site_address":".af-operator_site", #Адрес сайта, обеспечивающего доступ на ЭТП
+    tender_field_map = {
+        "af-operator_site":"site_address", #Адрес сайта, обеспечивающего доступ на ЭТП
         #["method_of_negotiation"],
         #"operator_info" ".af-operator_site", #Данные оператора	
-        "industry":".af-industry", #Отрасль
-        "short_description":".af-title", #Краткое описание предмета закупки	
+        "af-industry":"industry", #Отрасль
+        "af-title":"short_description", #Краткое описание предмета закупки	
 
         #customer info
-        "procurement_held_by" : ".af-hold_by", #Закупка проводится	
-        "customer_name" : ".af-customer_data", #Полное наименование заказчика, место нахождения организации, УНП	
-        "contacts" : ".af.af-customer_contacts", #Фамилии, имена и отчества, номера телефонов работников заказчика	
+        "af-hold_by":"procurement_held_by", #Закупка проводится	
+        "af-customer_data": "customer_name" , #Полное наименование заказчика, место нахождения организации, УНП	
+        "af-customer_contacts":"contacts" , #Фамилии, имена и отчества, номера телефонов работников заказчика	
+        "af-organizer_data":"organizer_data",#Полное наименование организатора, место нахождения организации, УНП
+        "af-organizer_contacts":"organizer_contacts", #Фамилии, имена и отчества, номера телефонов работников организатора
+        "af-organizer_salary": "organizer_payment", #Размер оплаты услуг организатора,
 
         #procurement_info
-        "creation_date":".af-created", #Дата размещения приглашения	
-        "start_date":".af-request_start",
-        "end_date":".af.af-request_end", #Дата и время окончания приема предложений	
-        "documentation_provisioning_info":"",
-        "documentation_price":"",
-        "proposal_estimated_price":".af.af-currency", #Общая ориентировочная стоимость акупки	
-        "proposal_closing_time":"",
-        "qualification_terms":".af.af-qualification", # Квалификационные требования
-        "proposal_participators_requirements" :".af.af-participator_demand",#Требования к оставу участников	
-        "proposal_submission_address":"",
-        "proposal_opening_time":"",
-        "proposal_opening_address" :"",
-        "preliminary_qualification_terms":"",
-        "other_information" :".af.af-others" #Иные сведения	
-    }
-
-        tender_field_map = {
-        "site_address":".af-operator_site", #Адрес сайта, обеспечивающего доступ на ЭТП
-        #["method_of_negotiation"],
-        #"operator_info" ".af-operator_site", #Данные оператора	
-        "industry":".af-industry", #Отрасль
-        "short_description":".af-title", #Краткое описание предмета закупки	
-
-        #customer info
-        "procurement_held_by" : ".af-hold_by", #Закупка проводится	
-        "customer_name" : ".af-customer_data", #Полное наименование заказчика, место нахождения организации, УНП	
-        "contacts" : ".af.af-customer_contacts", #Фамилии, имена и отчества, номера телефонов работников заказчика	
-
-        #procurement_info
-        "creation_date":".af-created", #Дата размещения приглашения	
-        "start_date":".af-request_start",
-        "end_date":".af.af-request_end", #Дата и время окончания приема предложений	
-        "documentation_provisioning_info":"",
-        "documentation_price":"",
-        "proposal_estimated_price":".af.af-currency", #Общая ориентировочная стоимость акупки	
-        "proposal_closing_time":"",
-        "qualification_terms":".af.af-qualification", # Квалификационные требования
-        "proposal_participators_requirements" :".af.af-participator_demand",#Требования к оставу участников	
-        "proposal_submission_address":"",
-        "proposal_opening_time":"",
-        "proposal_opening_address" :"",
-        "preliminary_qualification_terms":"",
-        "other_information" :".af.af-others" #Иные сведения	
+        "af-created":"creation_date", #Дата размещения приглашения	
+        "af-request_start":"start_date",
+        "af-request_end":"end_date", #Дата и время окончания приема предложений	
+        "af-documentation_data": "auction_documentation_data", #Сроки, место и порядок предоставления конкурсных документов
+        # "": "documentation_provisioning_info",
+        # "": "documentation_price",
+        "af-proposals_data":"proposals_data",#Место и порядок представления конкурсных предложений
+        "af-currency":"proposal_estimated_price", #Общая ориентировочная стоимость закупки	
+        "af-documentation_price":"documentation_price", #Цена конкурсных документов
+        # "": "proposal_closing_time",
+        "af-qualification" :"qualification_terms", # Квалификационные требования
+        "af-participator_demand": "proposal_participators_requirements",#Требования к оставу участников	
+        # "": "proposal_submission_address",
+        # "": "proposal_opening_time",
+        # "":"proposal_opening_address",
+        # "": "preliminary_qualification_terms",
+        "af-others": "other_information" #Иные сведения	
     }
 
     lot_field_map = {
@@ -140,22 +124,35 @@ class IcetradeSpider(scrapy.Spider):
         u"Размер конкурсного обеспечения": "competion_bank_guarantee",
         u"Размер аукционного обеспечения": "tender_bank_guarantee",
         u"Код ОКРБ" : "okrb_code",
-
     }
+
+    def __init__(self, number=None, start=None, limit=None):
+        self.fl = codecs.open(config.headers_file, 'a', 'utf-8')
+        self.lot_fl = codecs.open(config.lot_headers_file, 'a', 'utf-8')
+        self.tender_number = number
+        self.tender_start = start
+        self.tender_limit = limit
+
     
     def start_requests(self):
-        number = 400522
+        # number = None
+        # self.tender_number = 339947
+        self.tender_number = None
         # with results 400520
-        starting = 400520
-        limit = 10000#10000
+        # self.tender_start = 400520
+        self.tender_start = 450008
+        self.tender_limit = 2000
+        # limit = 10000#10000
 
-        if number:
-            tender_response = scrapy.Request(url = siteURL + paths['tender'] + str(number), callback=self.parse_tender)
+        if self.tender_number:
+            tender_response = scrapy.Request(url = config.siteURL + config.paths['tender'] + str(self.tender_number), callback=self.parse_tender)
             # self.state['items_count'] = self.state.get('items_count', 0) + 1
             yield tender_response       
         else:
-            for num in xrange(limit):
-                tender_response = scrapy.Request(url = siteURL + paths['tender'] + str(starting + num), callback=self.parse_tender)
+            if not self.tender_start or not self.tender_limit:
+                yield {}
+            for num in xrange(self.tender_limit):
+                tender_response = scrapy.Request(url = config.siteURL + config.paths['tender'] + str(self.tender_start + num), callback=self.parse_tender)
                 # self.state['items_count'] = self.state.get('items_count', 0) + 1
                 yield tender_response        
 
@@ -174,47 +171,68 @@ class IcetradeSpider(scrapy.Spider):
         header_string = response.css('div.ocB.w100 h1::text').extract()[1]
         header_match = re.search(r"(\d+)-(\d+)", header_string)
         tender['id'] = header_match.group(2)
-        tender['unused_headers'] = []
-        tender['unused_lot_headers'] = []
+
+        self.fl.write(str(tender['id']) + "\n")
+
         self.process_tender_info(tender, root_block)
         self.process_files(tender, root_block)
         self.process_events(tender, root_block)
         yield self.process_lots(tender, root_block)
 
-        # except:
-        #     yield {}
-
 
     def process_tender_info(self, tender, root_block):
 
         #tender info
-        for key in self.tender_field_map:
-            if self.tender_field_map[key] == "":
-                continue
 
-            value = root_block.css(self.tender_field_map[key] + " td.afv::text").extract_first()
-            if not value:
-                continue
+        # for key in self.tender_field_map:
+        #     if self.tender_field_map[key] == "":
+        #         continue
 
-            tender[key] = root_block.css(self.tender_field_map[key] + " td.afv::text").extract_first().strip()
+        #     value = root_block.css(self.tender_field_map[key] + " td.afv::text").extract_first()
+        #     if not value:
+        #         continue
+
+        #     tender[key] = root_block.css(self.tender_field_map[key] + " td.afv::text").extract_first().strip()
 
         field_items = root_block.css('.af')
         
         for elem in field_items:
             classes = elem.root.attrib['class'].split()
             for cl in classes:
-                if cl != "af" and cl.startswith("af"):
-                    tender['unused_headers']
+                # if cl != "af" and cl.startswith("af"):
+                if cl == "af" or not cl.startswith("af-") or cl == "af-files":
+                    continue
+
+                value = elem.css('td.afv::text').extract_first()
+                if not value:
+                    continue
+
+                if cl not in self.tender_field_map:
+                    tender[cl] = value.strip()
+                    # self.unused_headers.add(cl)
+                    self.add_unused_header(cl)
+                else:    
+                    tender[self.tender_field_map[cl]] = value.strip()
         #tender type
         tender['type'] = root_block.css('tr.fst b::text').extract_first().strip()
 
+
+    def add_unused_header(self, header):
+        # fl = open(config.headers_file, 'a')
+        self.fl.write(header + "\n")
+    
+    def add_lot_unused_header(self, header):
+        self.lot_fl.write(header + "\n")
+        # open(config.lot_headers_file
 
     def process_files(self, tender, root_block):
         files_selectors = root_block.css('td.af-files p')
         tender['files'] = []
         for file in files_selectors:
             file_object = {}
-            file_object['link'] = file.css('a::attr(href)').extract_first().strip()
+            link = file.css('a::attr(href)').extract_first()
+            if link:
+                file_object['link'] = link.strip()
             file_object['name'] = file.css('a::text').extract_first().strip()
 
             tender['files'].append(file_object)
@@ -228,7 +246,6 @@ class IcetradeSpider(scrapy.Spider):
             head = row.css('th::text').extract_first()
             if (not head):
                 continue
-            #println(row.css('th::text').extract_first() + '\n')
             if head.strip() == u"События в хронологическом порядке":
                 first_event_id = idx + 1
                 break
@@ -252,31 +269,51 @@ class IcetradeSpider(scrapy.Spider):
 
 
     def process_lots(self, tender, root_block):
-        print('process_lots')
+        # print('process_lots')
         lot_items = []
+        #common lot data
         lot_selectors = root_block.css('table#lots_list .af')
         for lot in lot_selectors:
             lot_item = {}
             lot_item['id'] = lot.css('td:nth-child(1)::text').extract_first().strip()
-            # ["item_name", "td:nth-child(2)"]
             lot_item['item_name'] = lot.css('td:nth-child(2)::text').extract_first().strip()
             quantity = lot.css('td:nth-child(3) span::text').extract_first()
-            lot_item['quantity'] = "".join(quantity.strip())
+            lot_item['quantity'] = "".join(quantity.split())
             lot_item['quantity_measurement'] = lot.css('td:nth-child(3)::text').extract()[1].strip()[:-1]
             try:
                 approx_price = lot.css('td:nth-child(3) span::text').extract()[1]
-                lot_item['approx_price'] = "".join(approx_price.strip())
+                lot_item['approx_price'] = "".join(approx_price.split())
                 lot_item['approx_price_currency'] = lot.css('td:nth-child(3)::text').extract()[3].strip()
             except:
                 lot_item['approx_price'] = ''
+                lot_item['approx_price_currency'] = ""
+
             lot_item['status'] = lot.css('td:nth-child(4)::text').extract_first().strip()
             lot_item['result'] = {}
             lot_items.append(lot_item)
             
-        if (len(lot_selectors)):
+        state = LotParseState.NoResult
+        result_id = None
+        for event in reversed(tender['events']):
+            if (event['text'] == consts.RESULT_EVENT_LABEL):
+                state = LotParseState.Info
+                result_id = event['link'].split('/')[-1]
+                break
+        tender['finished'] = bool(result_id)
+        if state == LotParseState.Info:
+            tender['lot_items'] = lot_items
+            result_response = scrapy.Request(
+                url = config.siteURL + config.paths['result'] + str(result_id),
+                callback=self.parse_result
+            )
+            result_response.meta['tender'] = tender
+            result_response.meta['state'] = state
+            result_response.meta['result_id'] = result_id
+            return result_response
+        elif (len(lot_selectors)):
             tender['lot_items'] = lot_items
             response = scrapy.http.FormRequest(
-                url = siteURL + paths['lot'],
+                url = config.siteURL + config.paths['lot'],
                 formdata = {'id': str(lot_items[0]['id']), 'auction_id': str(tender['id']), 'revision_id': '0'},
                 headers={'X-Requested-With': 'XMLHttpRequest'},
                 dont_filter=True,
@@ -284,13 +321,64 @@ class IcetradeSpider(scrapy.Spider):
             )
             response.meta['tender'] = tender
             response.meta['current_index'] = 0
-            response.meta['state'] = LotParseState.NoResult
-            for event in reversed(tender['events']):
-                if (event['text'] == consts.RESULT_EVENT_LABEL):
-                    response.meta['state'] = LotParseState.Info
-                    response.meta['result_id'] = event['link'].split('/')[-1]
+            response.meta['state'] = state
+            response.meta['result_id'] = result_id
+            # for event in reversed(tender['events']):
+            #     if (event['text'] == consts.RESULT_EVENT_LABEL):
+            #         response.meta['state'] = LotParseState.Info
+            #         response.meta['result_id'] = event['link'].split('/')[-1]
+            #         break
 
             return response
+        else:
+            return tender
+
+    # to fix
+    def parse_result(self, response):
+        # result lot data
+
+        tender = response.meta['tender']
+        lot_items = tender['lot_items']
+        lot_result_selectors = response.css('table#lots_list tr')
+        i=0
+        for lot_sel in lot_result_selectors:
+            if 'id' not in lot_sel.root.attrib:
+                continue
+
+            lot_id = lot_sel.css('td:nth-child(1)::text').extract_first().strip()
+            # for current_lot in lot_items:
+            #     if current_lot['id'] != lot_id:
+            #         continue
+            current_lot = lot_items[i]
+            assert(current_lot['id'] == lot_id)
+
+            current_lot['contract_item'] = lot_sel.css('td:nth-child(2)::text').extract_first().strip()
+            current_lot['contract_winner'] = lot_sel.css('td:nth-child(3)::text').extract_first().strip()
+            price_sel_v1 = lot_sel.css('td:nth-child(4) span::text').extract_first()
+            # if not price_sel_v1:
+            #     price_sel = lot.css('td:nth-child(3)::text text').extract_first()
+            try:
+                current_lot['contract_price'] = "".join(price_sel_v1.split())
+                current_lot['contract_currency'] = lot_sel.css('td:nth-child(4)::text').extract()[1].strip()
+            except:
+                current_lot['contract_price'] = ""
+                current_lot['contract_currency'] = ""
+            i+=1
+
+        if (len(lot_result_selectors)):
+            lot_response = scrapy.http.FormRequest(
+                url = config.siteURL + config.paths['lot'],
+                formdata = {'id': str(lot_items[0]['id']), 'auction_id': str(tender['id']), 'revision_id': '0'},
+                headers={'X-Requested-With': 'XMLHttpRequest'},
+                dont_filter=True,
+                callback=self.parse_lot_item
+            )
+            lot_response.meta['tender'] = tender
+            lot_response.meta['current_index'] = 0
+            lot_response.meta['state'] = response.meta['state']
+            lot_response.meta['result_id'] = response.meta['result_id']
+
+            return lot_response
         else:
             return tender
 
@@ -306,14 +394,12 @@ class IcetradeSpider(scrapy.Spider):
         lot_items = tender['lot_items']
         current_lot = lot_items[current_index]
 
-        #fill lot_item with new info
         rows = response.css('tr.lotSubRow')
         for row in rows:
             header = row.css('th::text').extract_first().strip()
             if header not in self.lot_field_map:
-                tender['unused_lot_headers'].append((tender['id'], header))
-                # data = {"name": "Mortimer 'Morty' Smith"}
-                # db.child("users").push(data)
+                # self.unused_lot_headers.add(header)
+                self.add_lot_unused_header(header)
                 #TODO: add headers
                 continue
             # try:
@@ -327,17 +413,19 @@ class IcetradeSpider(scrapy.Spider):
                 continue
             #TODO: should differently parse data of different types, e.g. time is 'date time'
             if parsing_state == LotParseState.Result:
-                lot_items[current_index]['result'][self.lot_field_map[header]] = data
+                current_lot['result'][self.lot_field_map[header]] = data
             else:
-                lot_items[current_index][self.lot_field_map[header]] = data
+                current_lot[self.lot_field_map[header]] = data
 
-
+        #400521
         if (parsing_state == LotParseState.Info):
+            self.lot_fl.write(str(tender['id']) + ":" + str(current_index) + "\n")
+
             next_parsing_state = LotParseState.Result
             if 'result_id' not in response.meta:
                 print("no result_id tender_id: %s, lot %s" % (tender['id'], current_index))
             next_response = scrapy.http.FormRequest(
-                url = siteURL + paths['lots_result'],
+                url = config.siteURL + config.paths['lots_result'],
                 formdata = {'id' : str(current_index), 'auction_id': str(response.meta['result_id']), 'revision_id': '0'},
                 callback=self.parse_lot_item,
                 headers={'X-Requested-With': 'XMLHttpRequest'},
@@ -345,32 +433,17 @@ class IcetradeSpider(scrapy.Spider):
             )            
             next_response.meta['current_index'] = current_index
 
-            # response.meta['state'] = LotParseState.NoResult
-                    # response.meta['result_id'] = event['link'].split('/')[-1]
-            # # print('index ' + str(next_index))
-            # tender['lot_items'] = lot_items
-            # # next_response.meta['lot_items'] = lot_items
-            # next_response.meta['current_index'] = next_index
-            # next_response.meta['tender'] = tender
-            # # print('yield next_response')
-            # return next_response
-
         elif parsing_state in (LotParseState.Result, LotParseState.NoResult):
             if parsing_state == LotParseState.Result:
                 next_parsing_state = LotParseState.Info
             else:
                 next_parsing_state = LotParseState.NoResult
             next_index = current_index + 1
-            # print('len = ' + str(len(lot_items)) + " index = " + str(next_index))
             if (len(lot_items) <= next_index):
-                # tender['lots'] = lot_items
-                # print('yield tender')
                 return tender
-                # return
 
-            # print('post index')
             next_response = scrapy.http.FormRequest(
-                url = siteURL + paths['lot'],
+                url = config.siteURL + config.paths['lot'],
                 formdata = {'id' : str(next_index), 'auction_id': str(tender['id']), 'revision_id': '0'},
                 callback=self.parse_lot_item,
                 headers={'X-Requested-With': 'XMLHttpRequest'},
@@ -379,8 +452,7 @@ class IcetradeSpider(scrapy.Spider):
             next_response.meta['current_index'] = next_index
          
         if parsing_state != LotParseState.NoResult:
-            response.meta['result_id'] = tender['events'][-1]['link'].split('/')[-1]
-            # next_response.meta['event_id'] = response.meta['event_id']
+            next_response.meta['result_id'] = tender['events'][-1]['link'].split('/')[-1]
 
         tender['lot_items'] = lot_items
         next_response.meta['tender'] = tender

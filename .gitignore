@@ -1,6 +1,10 @@
 ### Repo specific
 data/
 db/
+tutorial/unused_headers.txt
+tutorial/unused_lot_headers.txt
+tutorial/items.json
+old_data/*
 
 ### VS Code
 .vscode/*

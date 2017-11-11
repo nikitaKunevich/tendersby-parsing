@@ -6,7 +6,7 @@
 # http://doc.scrapy.org/en/latest/topics/spider-middleware.html
 
 from scrapy import signals
-
+import spiders.icetrade.config
 
 class TutorialSpiderMiddleware(object):
     # Not all methods need to be defined. If a method is not defined,
@@ -32,7 +32,7 @@ class TutorialSpiderMiddleware(object):
         # it has processed the response.
 
         # Must return an iterable of Request, dict or Item objects.
-        print('process -> '  + result)
+
         spider.logger.info('process -> ' + result)
         for i in result:
             yield i
@@ -51,8 +51,6 @@ class TutorialSpiderMiddleware(object):
         # that it doesn’t have a response associated.
 
         # Must return only requests (not items).
-        spider.logger.info('start requ ->')
-
         for r in start_requests:
             yield r
 
